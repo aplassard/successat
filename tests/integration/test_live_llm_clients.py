@@ -32,7 +32,6 @@ def test_openai_client_live_chat_completion() -> None:
         response = client.chat(
             "Reply with a short acknowledgement of success.",
             model=_resolve_model("OPENAI_INTEG_MODEL", client.model),
-            temperature=0,
         )
     finally:
         client.client.close()
@@ -48,7 +47,6 @@ def test_openrouter_client_live_chat_completion() -> None:
         response = client.chat(
             "Respond with a concise confirmation that OpenRouter is reachable.",
             model=_resolve_model("OPENROUTER_INTEG_MODEL", client.model),
-            temperature=0,
         )
     finally:
         client.client.close()
