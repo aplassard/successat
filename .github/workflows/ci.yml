@@ -9,6 +9,9 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,4 +25,9 @@ jobs:
         run: uv sync
 
       - name: Run tests
-        run: uv run --env-file .env pytest
+        run: |
+          if [ -f .env ]; then
+            uv run --env-file .env pytest
+          else
+            uv run pytest
+          fi

@@ -20,6 +20,8 @@
   automatically when credentials are unavailable.
 - Run all checks with `uv run --env-file .env pytest`. To omit external calls in
   local development, use `uv run --env-file .env pytest -m "not integtest"`.
+- GitHub Actions loads provider keys from repository secrets and automatically
+  falls back to `uv run pytest` when a `.env` file is not present.
 - Close instantiated `OpenAI` clients in tests to avoid resource warnings.
 
 Following these practices keeps local development, CI, and production

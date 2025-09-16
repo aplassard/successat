@@ -57,8 +57,9 @@ uv run --env-file .env pytest
 ```
 
 The `--env-file` flag ensures the `.env` file is loaded, keeping the test
-environment aligned with production usage. The same command is executed by the
-continuous integration workflow in `.github/workflows/ci.yml`.
+environment aligned with production usage when developing locally. Continuous
+integration loads provider credentials from GitHub secrets and falls back to
+`uv run pytest` automatically when a `.env` file is not present.
 
 Integration tests that call the external APIs are marked with the `integtest`
 pytest marker. To focus on unit tests locally you can exclude them:
