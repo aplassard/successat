@@ -25,9 +25,4 @@ jobs:
         run: uv sync
 
       - name: Run tests
-        run: |
-          if [ -f .env ]; then
-            uv run --env-file .env pytest
-          else
-            uv run pytest
-          fi
+        run: uv run pytest
