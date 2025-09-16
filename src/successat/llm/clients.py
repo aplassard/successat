@@ -39,7 +39,7 @@ class BaseLLMClient(ABC):
 
         return self._client
 
-    def chat(
+    def chat_completion(
         self,
         prompt: str,
         *,
@@ -47,8 +47,8 @@ class BaseLLMClient(ABC):
         model: str | None = None,
         extra_messages: Sequence[Mapping[str, str]] | None = None,
         **kwargs: Any,
-    ) -> str:
-        """Execute a chat completion request and return the model response."""
+    ) -> Any:
+        """Execute a chat completion request and return the raw response."""
 
         messages: list[Dict[str, str]] = []
         if system_prompt:
@@ -59,11 +59,31 @@ class BaseLLMClient(ABC):
         if extra_messages:
             messages.extend({"role": msg["role"], "content": msg["content"]} for msg in extra_messages)
 
-        result = self.client.chat.completions.create(
+        return self.client.chat.completions.create(
             model=model or self.model,
             messages=messages,
             **kwargs,
         )
+
+    def chat(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        extra_messages: Sequence[Mapping[str, str]] | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """Execute a chat completion request and return the model response text."""
+
+        result = self.chat_completion(
+            prompt,
+            system_prompt=system_prompt,
+            model=model,
+            extra_messages=extra_messages,
+            **kwargs,
+        )
+
         first_choice = result.choices[0]
         message_content = getattr(first_choice.message, "content", "")
 
