@@ -4,4 +4,18 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "openai>=1.30.0",
+    "pytest>=7.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+pythonpath = [
+    "src",
+]
+markers = [
+    "integtest: marks tests that call real provider APIs",
+]
