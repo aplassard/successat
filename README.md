@@ -81,6 +81,7 @@ environment.
 ## Example usage
 
 ```python
+from successat.benchmarks import run_benchmark
 from successat.llm.clients import OpenAIClient, OpenRouterClient
 
 # Instantiate using environment variables defined in .env
@@ -89,7 +90,47 @@ router_client = OpenRouterClient.from_env()
 
 print(openai_client.chat("Explain reusable LLM benchmarking."))
 print(router_client.chat("Explain reusable LLM benchmarking."))
+
+# Execute a reusable benchmark example (here the GSM8K math task)
+result = run_benchmark(openai_client, "gsm8k", identifier=0, split="test")
+
+print(
+    "Model:", result.model,
+    "Prompt:", result.prompt,
+    "Expected:", result.metadata["expected"],
+    "Response:", result.response_text,
+    "Correct:", result.correct,
+)
 ```
 
 Remember that invoking the clients requires valid API keys; the example is
-intended for environments where the necessary credentials are available.
+intended for environments where the necessary credentials are available. The
+`run_benchmark` helper returns a `BenchmarkResult` containing the raw response
+object, extracted text, correctness flag, and metadata describing the
+evaluation.
+
+## Available benchmarks
+
+Each benchmark pulls real evaluation data from the Hugging Face Hub. The first
+execution will download the corresponding dataset artefacts to the local cache.
+
+* **GSM8K** – loads the `gsm8k` dataset (`main` configuration) and supports the
+  `train` and `test` splits.
+* **MMLU** – uses the `cais/mmlu` dataset with the `all` configuration. Supported
+  splits include `train` (mapped to `auxiliary_train`), `dev`, `validation`, and
+  `test`.
+* **HumanEval** – evaluates generated code against the official
+  `openai_humaneval` test harness.
+* **TriviaQA / ARC-Easy** – combines the
+  `TimoImhof/Splits_Subset_TriviaQa` subset for free-form answers and the
+  `ai2_arc` `ARC-Easy` configuration for multiple choice questions. Common
+  aliases (`train`, `validation`, `test`) return a blended set, while
+  `triviaqa:<split>` or `arc_easy:<split>` target individual sources.
+
+Use the `identifier` argument to select a specific example by index or by its
+unique identifier:
+
+```python
+result = run_benchmark(openai_client, "triviaqa", split="arc_easy:test", identifier=0)
+print(result.metadata["evaluation_details"])
+```
