@@ -7,7 +7,7 @@ import json
 import sys
 from typing import Any, Mapping, Sequence
 
-from .benchmarks import BenchmarkResult, benchmark_registry, run_benchmark
+from .benchmarks import Benchmark, BenchmarkResult, benchmark_registry, run_benchmark
 from .llm import BaseLLMClient, OpenAIClient, OpenRouterClient
 
 
@@ -80,6 +80,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--list-benchmarks",
         action="store_true",
         help="List the available benchmark names and exit.",
+    )
+    parser.add_argument(
+        "--benchmark-details",
+        metavar="BENCHMARK",
+        help="Show the available splits and example counts for the specified benchmark.",
     )
     return parser
 
@@ -167,6 +172,53 @@ def _close_client(client: BaseLLMClient) -> None:
         close()
 
 
+class _IntrospectionClient:
+    """Minimal client used when introspecting benchmark metadata."""
+
+    model = "introspection"
+
+    def chat_completion(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover - defensive
+        msg = "Introspection client cannot execute chat completions."
+        raise RuntimeError(msg)
+
+
+def _print_benchmark_details(benchmark_name: str) -> None:
+    """Display the available splits and example counts for a benchmark."""
+
+    try:
+        benchmark_cls: type[Benchmark] = benchmark_registry.get(benchmark_name)
+    except KeyError as exc:
+        msg = str(exc)
+        raise CLIError(msg, exit_code=1) from exc
+
+    benchmark = benchmark_cls(_IntrospectionClient())
+
+    try:
+        split_names = list(benchmark.available_splits())
+    except Exception as exc:  # pragma: no cover - benchmark misconfiguration
+        msg = f"Failed to determine splits for benchmark '{benchmark.name}': {exc}"
+        raise CLIError(msg, exit_code=1) from exc
+
+    print(f"Benchmark: {benchmark.name}")
+    print("Splits:")
+
+    if not split_names:
+        print("  (none)")
+        return
+
+    for split in split_names:
+        try:
+            examples = benchmark.examples_for_split(split)
+        except Exception as exc:  # pragma: no cover - dataset access failures
+            msg = f"Failed to load split '{split}' for benchmark '{benchmark.name}': {exc}"
+            raise CLIError(msg, exit_code=1) from exc
+
+        count = len(examples)
+        noun = "example" if count == 1 else "examples"
+        default_marker = " (default)" if split == benchmark.default_split else ""
+        print(f"  - {split}{default_marker}: {count} {noun}")
+
+
 def _format_result(result: BenchmarkResult) -> str:
     """Return a human-readable representation of the benchmark result."""
 
@@ -195,9 +247,16 @@ def _format_result(result: BenchmarkResult) -> str:
 def _run(args: argparse.Namespace) -> int:
     """Execute the CLI using the provided arguments."""
 
+    if args.list_benchmarks and args.benchmark_details:
+        raise CLIError("--list-benchmarks cannot be combined with --benchmark-details.")
+
     if args.list_benchmarks:
         for name in benchmark_registry.names():
             print(name)
+        return 0
+
+    if args.benchmark_details:
+        _print_benchmark_details(args.benchmark_details)
         return 0
 
     if not args.benchmark:

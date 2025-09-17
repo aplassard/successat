@@ -38,6 +38,9 @@ class MMLUBenchmark(Benchmark):
         self._examples_by_dataset_split: Dict[str, List[BenchmarkExample]] = {}
         self._alias_cache: Dict[str, List[BenchmarkExample]] = {}
 
+    def available_splits(self) -> Sequence[str]:
+        return ["auxiliary_train", "dev", "validation", "test"]
+
     def examples_for_split(self, split: str) -> Sequence[BenchmarkExample]:
         alias = split.lower()
         if alias in self._alias_cache:

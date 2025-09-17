@@ -7,7 +7,7 @@ from typing import Any, Dict, Mapping
 
 import pytest
 
-from successat.benchmarks.base import BenchmarkResult
+from successat.benchmarks.base import Benchmark, BenchmarkExample, BenchmarkResult
 
 
 @dataclass
@@ -131,6 +131,49 @@ def test_cli_lists_benchmarks(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Ca
 
     out = capsys.readouterr().out.splitlines()
     assert out == ["b", "a"]
+
+
+def test_cli_shows_benchmark_details(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import successat.cli as cli
+
+    class _DetailBenchmark(Benchmark):
+        name = "demo"
+        default_split = "b"
+
+        def available_splits(self) -> list[str]:
+            return ["a", "b"]
+
+        def examples_for_split(self, split: str):
+            if split == "a":
+                return [
+                    BenchmarkExample(id="a1", prompt="", target=""),
+                    BenchmarkExample(id="a2", prompt="", target=""),
+                ]
+            if split == "b":
+                return [BenchmarkExample(id="b1", prompt="", target="")]
+            raise ValueError(split)
+
+    class _Registry:
+        def names(self) -> list[str]:
+            return ["demo"]
+
+        def get(self, name: str):
+            if name == "demo":
+                return _DetailBenchmark
+            raise KeyError(name)
+
+    monkeypatch.setattr(cli, "benchmark_registry", _Registry())
+
+    exit_code = cli.main(["--benchmark-details", "demo"])
+    assert exit_code == 0
+
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "Benchmark: demo"
+    assert out[1] == "Splits:"
+    assert out[2] == "  - a: 2 examples"
+    assert out[3] == "  - b (default): 1 example"
 
 
 def test_cli_reports_invalid_parameter(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

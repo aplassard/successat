@@ -33,6 +33,9 @@ class HumanEvalBenchmark(Benchmark):
         super().__init__(client)
         self._examples: Dict[str, List[BenchmarkExample]] = {}
 
+    def available_splits(self) -> Sequence[str]:
+        return ["test"]
+
     def examples_for_split(self, split: str) -> Sequence[BenchmarkExample]:
         split_lower = split.lower()
         if split_lower != "test":
