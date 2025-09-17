@@ -30,8 +30,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(description="Run successat benchmarks from the CLI.")
     parser.add_argument(
-        "benchmark",
-        nargs="?",
+        "--benchmark",
+        "-b",
         help="Name of the benchmark to execute (e.g. gsm8k, mmlu, humaneval).",
     )
     parser.add_argument(
@@ -201,7 +201,7 @@ def _run(args: argparse.Namespace) -> int:
         return 0
 
     if not args.benchmark:
-        raise CLIError("A benchmark name is required when not listing benchmarks.")
+        raise CLIError("A benchmark name is required. Provide --benchmark <name>.")
 
     identifier = _parse_identifier(args.identifier)
     chat_parameters = _parse_key_value_pairs(args.param)

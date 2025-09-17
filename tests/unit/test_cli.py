@@ -81,6 +81,7 @@ def test_cli_runs_benchmark(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
 
     exit_code = cli.main(
         [
+            "--benchmark",
             "gsm8k",
             "--client",
             "dummy",
@@ -137,7 +138,9 @@ def test_cli_reports_invalid_parameter(monkeypatch: pytest.MonkeyPatch, capsys: 
 
     monkeypatch.setattr(cli, "CLIENT_FACTORIES", {"dummy": _DummyClient})
 
-    exit_code = cli.main(["gsm8k", "--client", "dummy", "--api-key", "key", "--param", "invalid"])
+    exit_code = cli.main(
+        ["--benchmark", "gsm8k", "--client", "dummy", "--api-key", "key", "--param", "invalid"]
+    )
 
     assert exit_code == 2
     err = capsys.readouterr().err

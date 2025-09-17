@@ -117,7 +117,7 @@ models without writing a Python harness. For example:
 
 ```bash
 uv run successat --list-benchmarks
-uv run successat gsm8k --client openai --split test --identifier 0 --param temperature=0.2
+uv run successat --benchmark gsm8k --client openai --split test --identifier 0 --param temperature=0.2
 ```
 
 Pass `--client-option` arguments to forward extra keyword arguments to the
