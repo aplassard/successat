@@ -28,6 +28,9 @@ class GSM8KBenchmark(Benchmark):
         super().__init__(client)
         self._examples_by_split: Dict[str, List[BenchmarkExample]] = {}
 
+    def available_splits(self) -> Sequence[str]:
+        return ["train", "test"]
+
     # Public API ---------------------------------------------------------
     def examples_for_split(self, split: str) -> Sequence[BenchmarkExample]:
         dataset_split = self._resolve_split(split)

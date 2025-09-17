@@ -53,6 +53,14 @@ class TriviaQABenchmark(Benchmark):
         self._arc_examples: Dict[str, List[BenchmarkExample]] = {}
         self._combined_cache: Dict[str, List[BenchmarkExample]] = {}
 
+    def available_splits(self) -> Sequence[str]:
+        combined = ["train", "validation", "test"]
+        trivia_splits = sorted({value for value in self._TRIVIA_SPLIT_ALIASES.values()})
+        arc_splits = sorted({value for value in self._ARC_SPLIT_ALIASES.values()})
+        trivia_specs = [f"triviaqa:{split}" for split in trivia_splits]
+        arc_specs = [f"arc_easy:{split}" for split in arc_splits]
+        return [*combined, *trivia_specs, *arc_specs]
+
     def examples_for_split(self, split: str) -> Sequence[BenchmarkExample]:
         spec = self._resolve_split_spec(split)
         kind = spec["kind"]

@@ -90,6 +90,11 @@ class Benchmark:
     def __init__(self, client: SupportsChatCompletion) -> None:
         self.client = client
 
+    def available_splits(self) -> Sequence[str]:
+        """Return the collection of supported split names for the benchmark."""
+
+        return [self.default_split]
+
     # Public API ---------------------------------------------------------
     def run(
         self,
