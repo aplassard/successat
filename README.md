@@ -109,6 +109,23 @@ intended for environments where the necessary credentials are available. The
 object, extracted text, correctness flag, and metadata describing the
 evaluation.
 
+## Command line usage
+
+The package also installs a `successat` console script that provides a thin
+wrapper around the benchmark runner. This is useful for quickly sanity-checking
+models without writing a Python harness. For example:
+
+```bash
+uv run successat --list-benchmarks
+uv run successat --benchmark gsm8k --client openai --split test --identifier 0 --param temperature=0.2
+```
+
+Pass `--client-option` arguments to forward extra keyword arguments to the
+client constructor and `--param` to control the chat completion call (for
+example, `temperature`, `max_tokens`, or provider-specific toggles). Credentials
+are read from environment variables by default, but an explicit `--api-key`
+value can be supplied for ad-hoc testing.
+
 ## Available benchmarks
 
 Each benchmark pulls real evaluation data from the Hugging Face Hub. The first
