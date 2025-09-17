@@ -10,6 +10,9 @@ dependencies = [
     "datasets>=4.0.0",
 ]
 
+[project.scripts]
+successat = "successat.cli:main"
+
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
