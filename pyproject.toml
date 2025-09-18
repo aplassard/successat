@@ -1,14 +1,22 @@
 [project]
 name = "successat"
 version = "0.1.0"
-description = "Add your description here"
+description = "Reusable benchmarking utilities for provider-agnostic LLM clients"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "openai>=1.30.0",
-    "pytest>=7.4",
     "datasets>=4.0.0",
 ]
+authors = [
+    { name = "aplassard" },
+    { name = "codex" },
+]
+license = { file = "LICENSE" }
+
+[project.urls]
+Homepage = "https://github.com/aplassard/successat"
+Repository = "https://github.com/aplassard/successat"
 
 [project.scripts]
 successat = "successat.cli:main"
@@ -32,4 +40,9 @@ pythonpath = [
 ]
 markers = [
     "integtest: marks tests that call real provider APIs",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4",
 ]

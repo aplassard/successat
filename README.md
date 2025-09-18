@@ -46,6 +46,25 @@ uv sync
 This will create a local virtual environment under `.venv/` if one does not
 already exist.
 
+## Installing the package with `uv`
+
+When you want to use the library outside of the development environment, you
+can install it directly with `uv`:
+
+```bash
+uv pip install .
+```
+
+Once the repository is published or if you want to consume it directly from
+GitHub without cloning first, install from the hosted repository:
+
+```bash
+uv pip install git+https://github.com/aplassard/successat.git
+```
+
+Both commands build the package metadata declared in `pyproject.toml`, so the
+console script and modules are available immediately after installation.
+
 ## Running the test suite
 
 Unit and integration tests are managed with `pytest`. By default the suite will
