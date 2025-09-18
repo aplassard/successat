@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from uuid import UUID
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping
 
@@ -188,3 +191,76 @@ def test_cli_reports_invalid_parameter(monkeypatch: pytest.MonkeyPatch, capsys: 
     assert exit_code == 2
     err = capsys.readouterr().err
     assert "Invalid parameter" in err
+
+
+def test_cli_logs_results_to_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    import successat.cli as cli
+
+    monkeypatch.setattr(cli, "CLIENT_FACTORIES", {"dummy": _DummyClient})
+
+    def fake_run_benchmark(*args: Any, **kwargs: Any) -> BenchmarkResult:
+        return _build_result()
+
+    monkeypatch.setattr(cli, "run_benchmark", fake_run_benchmark)
+
+    fake_uuid = UUID("12345678-1234-5678-1234-567812345678")
+    monkeypatch.setattr(cli.uuid, "uuid4", lambda: fake_uuid)
+
+    exit_code = cli.main([
+        "--benchmark",
+        "gsm8k",
+        "--client",
+        "dummy",
+        "--api-key",
+        "key",
+        "--log-results",
+        str(tmp_path),
+    ])
+
+    assert exit_code == 0
+
+    out = capsys.readouterr().out
+    assert "Benchmark: gsm8k" in out
+
+    log_file = tmp_path / "12345678-1234-5678-1234-567812345678.json"
+    assert log_file.exists()
+
+    with log_file.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    assert payload["benchmark"] == "gsm8k"
+    assert payload["model"] == "dummy-model"
+    assert payload["correct"] is True
+
+
+def test_cli_requires_directory_for_logging(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    import successat.cli as cli
+
+    monkeypatch.setattr(cli, "CLIENT_FACTORIES", {"dummy": _DummyClient})
+
+    file_path = tmp_path / "not_a_dir"
+    file_path.write_text("data", encoding="utf-8")
+
+    exit_code = cli.main([
+        "--benchmark",
+        "gsm8k",
+        "--client",
+        "dummy",
+        "--api-key",
+        "key",
+        "--log-results",
+        str(file_path),
+    ])
+
+    assert exit_code == 1
+
+    captured = capsys.readouterr()
+    assert "not a directory" in captured.err
