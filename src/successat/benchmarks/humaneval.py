@@ -28,6 +28,7 @@ class HumanEvalBenchmark(Benchmark):
     description = "Python function synthesis with execution-based scoring."
     dataset_name = "openai_humaneval"
     default_split = "test"
+    example_id_prefix = "humaneval"
 
     def __init__(self, client):
         super().__init__(client)
@@ -103,10 +104,19 @@ class HumanEvalBenchmark(Benchmark):
         )
 
         return BenchmarkExample(
-            id=f"humaneval-{task_id}",
+            id=f"{self.example_id_prefix}-{task_id}",
             prompt=prompt,
             target=entry_point,
             metadata=metadata,
             system_prompt=system_prompt,
         )
+
+
+class HumanEvalPlusBenchmark(HumanEvalBenchmark):
+    """Evaluate HumanEval+ problems using the EvalPlus augmented test suite."""
+
+    name = "humaneval+"
+    description = "Python synthesis with the HumanEval+ extended unit tests."
+    dataset_name = "evalplus/humanevalplus"
+    example_id_prefix = "humanevalplus"
 

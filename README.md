@@ -157,6 +157,8 @@ execution will download the corresponding dataset artefacts to the local cache.
   `test`.
 * **HumanEval** – evaluates generated code against the official
   `openai_humaneval` test harness.
+* **HumanEval+** – runs the EvalPlus `evalplus/humanevalplus` variant with
+  augmented unit tests derived from the original problems.
 * **TriviaQA / ARC** – combines the
   `TimoImhof/Splits_Subset_TriviaQa` subset for free-form answers with the
   `ai2_arc` `ARC-Easy` and `ARC-Challenge` configurations for multiple choice

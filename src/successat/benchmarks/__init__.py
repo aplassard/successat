@@ -12,7 +12,7 @@ from .base import (
     SupportsChatCompletion,
 )
 from .gsm8k import GSM8KBenchmark
-from .humaneval import HumanEvalBenchmark
+from .humaneval import HumanEvalBenchmark, HumanEvalPlusBenchmark
 from .mmlu import MMLUBenchmark
 from .triviaqa import TriviaQABenchmark
 
@@ -23,6 +23,7 @@ __all__ = [
     "BenchmarkResult",
     "GSM8KBenchmark",
     "HumanEvalBenchmark",
+    "HumanEvalPlusBenchmark",
     "MMLUBenchmark",
     "TriviaQABenchmark",
     "benchmark_registry",
@@ -41,7 +42,13 @@ def register_benchmarks(registry: BenchmarkRegistry, benchmarks: Iterable[Type[B
 benchmark_registry = BenchmarkRegistry()
 register_benchmarks(
     benchmark_registry,
-    (GSM8KBenchmark, MMLUBenchmark, HumanEvalBenchmark, TriviaQABenchmark),
+    (
+        GSM8KBenchmark,
+        MMLUBenchmark,
+        HumanEvalBenchmark,
+        HumanEvalPlusBenchmark,
+        TriviaQABenchmark,
+    ),
 )
 
 
