@@ -139,6 +139,8 @@ class OpenAIClient(BaseLLMClient):
         headers = self._build_default_headers()
         client_kwargs = self._pop_client_kwargs()
         client_kwargs.setdefault("default_headers", headers)
+        client_kwargs.setdefault("timeout", 60.0)
+        client_kwargs.setdefault("max_retries", 3)
 
         return OpenAI(api_key=self.api_key, **client_kwargs)
 
@@ -186,6 +188,8 @@ class OpenRouterClient(BaseLLMClient):
     def _create_client(self) -> OpenAI:  # pragma: no cover - exercised in integration tests
         headers = self._build_default_headers()
         client_kwargs = dict(self._client_kwargs)
+        client_kwargs.setdefault("timeout", 60.0)
+        client_kwargs.setdefault("max_retries", 3)
         client_kwargs.pop("default_headers", None)
         base_url = client_kwargs.pop("base_url", self.base_url)
 
