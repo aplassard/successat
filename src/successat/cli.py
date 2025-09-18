@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import uuid
+from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .benchmarks import Benchmark, BenchmarkResult, benchmark_registry, run_benchmark
@@ -85,6 +88,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--benchmark-details",
         metavar="BENCHMARK",
         help="Show the available splits and example counts for the specified benchmark.",
+    )
+    parser.add_argument(
+        "--log-results",
+        metavar="DIRECTORY",
+        help="Directory where benchmark results will be written as JSON logs.",
     )
     return parser
 
@@ -244,6 +252,48 @@ def _format_result(result: BenchmarkResult) -> str:
     return "\n".join(output_lines)
 
 
+def _sanitize_for_json(value: Any) -> Any:
+    """Return a JSON-serializable representation of ``value``."""
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    if isinstance(value, MappingABC):
+        return {str(key): _sanitize_for_json(item) for key, item in value.items()}
+
+    if isinstance(value, SequenceABC) and not isinstance(value, (str, bytes, bytearray)):
+        return [_sanitize_for_json(item) for item in value]
+
+    return str(value)
+
+
+def _log_result(result: BenchmarkResult, directory: Path) -> Path:
+    """Persist the benchmark result to ``directory`` as a JSON document."""
+
+    file_path = directory / f"{uuid.uuid4()}.json"
+    payload = {
+        "benchmark": result.benchmark,
+        "model": result.model,
+        "split": result.split,
+        "example_id": result.example_id,
+        "prompt": result.prompt,
+        "response": _sanitize_for_json(result.response),
+        "response_text": result.response_text,
+        "correct": result.correct,
+        "metadata": _sanitize_for_json(result.metadata),
+    }
+
+    try:
+        with file_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+            handle.write("\n")
+    except OSError as exc:
+        msg = f"Failed to write result log to '{file_path}': {exc}"
+        raise CLIError(msg, exit_code=1) from exc
+
+    return file_path
+
+
 def _run(args: argparse.Namespace) -> int:
     """Execute the CLI using the provided arguments."""
 
@@ -266,6 +316,16 @@ def _run(args: argparse.Namespace) -> int:
     chat_parameters = _parse_key_value_pairs(args.param)
     client_options = _parse_key_value_pairs(args.client_option)
 
+    log_directory: Path | None = None
+    if args.log_results:
+        log_directory = Path(args.log_results).expanduser()
+        if not log_directory.exists():
+            msg = f"Results directory '{log_directory}' does not exist."
+            raise CLIError(msg, exit_code=1)
+        if not log_directory.is_dir():
+            msg = f"Results path '{log_directory}' is not a directory."
+            raise CLIError(msg, exit_code=1)
+
     client = _create_client(args, client_options)
     try:
         result = run_benchmark(
@@ -281,6 +341,9 @@ def _run(args: argparse.Namespace) -> int:
         _close_client(client)
 
     print(_format_result(result))
+
+    if log_directory is not None:
+        _log_result(result, log_directory)
     return 0
 
 
