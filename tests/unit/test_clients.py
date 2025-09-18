@@ -19,6 +19,8 @@ def test_openai_client_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
         assert client.api_key == "test-key"
         assert client.app_name == "successat"
         assert client.model == "gpt-5-nano"
+        assert client.client.timeout == 60.0
+        assert client.client.max_retries == 3
     finally:
         client.client.close()
 
@@ -39,6 +41,31 @@ def test_openrouter_client_default_configuration() -> None:
         assert headers["X-Title"] == "successat"
         assert headers["User-Agent"] == "successat"
         assert str(client.client._client.base_url) == "https://openrouter.ai/api/v1/"
+        assert client.client.timeout == 60.0
+        assert client.client.max_retries == 3
+    finally:
+        client.client.close()
+
+
+def test_openai_client_allows_overriding_timeout_and_retries() -> None:
+    client = OpenAIClient(api_key="key", client_kwargs={"timeout": 10.0, "max_retries": 5})
+
+    try:
+        assert client.client.timeout == 10.0
+        assert client.client.max_retries == 5
+    finally:
+        client.client.close()
+
+
+def test_openrouter_client_allows_overriding_timeout_and_retries() -> None:
+    client = OpenRouterClient(
+        api_key="router-key",
+        client_kwargs={"timeout": 15.0, "max_retries": 4},
+    )
+
+    try:
+        assert client.client.timeout == 15.0
+        assert client.client.max_retries == 4
     finally:
         client.client.close()
 
