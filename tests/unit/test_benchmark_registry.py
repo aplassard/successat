@@ -7,6 +7,7 @@ import pytest
 from successat.benchmarks import (
     GSM8KBenchmark,
     HumanEvalBenchmark,
+    HumanEvalPlusBenchmark,
     MMLUBenchmark,
     TriviaQABenchmark,
     benchmark_registry,
@@ -18,7 +19,7 @@ from successat.benchmarks.base import BenchmarkRegistry
 
 def test_registry_contains_default_benchmarks() -> None:
     names = set(benchmark_registry.names())
-    assert {"gsm8k", "mmlu", "humaneval", "triviaqa"}.issubset(names)
+    assert {"gsm8k", "mmlu", "humaneval", "humaneval+", "triviaqa"}.issubset(names)
 
 
 def test_register_benchmarks_rejects_duplicates() -> None:

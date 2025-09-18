@@ -117,6 +117,30 @@ def test_humaneval_benchmark_live_round_trip(
         assert "error" in details
 
 
+def test_humaneval_plus_benchmark_live_round_trip(
+    live_openai_client: OpenAIClient, benchmark_model: str
+) -> None:
+    result = _run(
+        live_openai_client,
+        "humaneval+",
+        identifier=0,
+        split="test",
+        model=benchmark_model,
+    )
+
+    entry_point = result.metadata["entry_point"]
+    assert result.benchmark == "humaneval+"
+    assert entry_point
+    assert f"def {entry_point}" in result.prompt
+    assert result.metadata["canonical_solution"]
+    assert result.response_text.strip()
+
+    if not result.correct:
+        details = result.metadata.get("evaluation_details")
+        assert details is not None
+        assert "error" in details
+
+
 def test_triviaqa_short_answer_live_round_trip(
     live_openai_client: OpenAIClient, benchmark_model: str
 ) -> None:

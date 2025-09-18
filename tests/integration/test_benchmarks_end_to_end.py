@@ -5,6 +5,7 @@ from __future__ import annotations
 from successat.benchmarks import (
     GSM8KBenchmark,
     HumanEvalBenchmark,
+    HumanEvalPlusBenchmark,
     MMLUBenchmark,
     TriviaQABenchmark,
     run_benchmark,
@@ -60,6 +61,33 @@ def test_humaneval_benchmark_end_to_end(fake_llm_client) -> None:
 
     result = run_benchmark(client, "humaneval", identifier=example.id, split="test")
 
+    assert result.correct is True
+    assert example.target in result.response_text
+    assert example.metadata["entry_point"] in client.calls[0]["prompt"]
+
+
+def test_humaneval_plus_benchmark_end_to_end(fake_llm_client) -> None:
+    sample_client = fake_llm_client([])
+    example = HumanEvalPlusBenchmark(sample_client).examples_for_split("test")[0]
+    entry_point = example.metadata["entry_point"]
+    canonical_solution = example.metadata["canonical_solution"]
+
+    prompt_lines = example.prompt.splitlines()
+    code_lines = []
+    for idx, line in enumerate(prompt_lines):
+        code_lines.append(line)
+        if line.strip().startswith(f"def {entry_point}"):
+            code_lines.extend(prompt_lines[idx + 1 :])
+            break
+    code_lines.extend(canonical_solution.splitlines())
+
+    code = "\n".join(code_lines)
+    response = f"```python\n{code}\n```"
+    client = fake_llm_client(response)
+
+    result = run_benchmark(client, "humaneval+", identifier=example.id, split="test")
+
+    assert result.benchmark == "humaneval+"
     assert result.correct is True
     assert example.target in result.response_text
     assert example.metadata["entry_point"] in client.calls[0]["prompt"]
