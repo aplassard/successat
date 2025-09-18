@@ -138,11 +138,12 @@ execution will download the corresponding dataset artefacts to the local cache.
   `test`.
 * **HumanEval** – evaluates generated code against the official
   `openai_humaneval` test harness.
-* **TriviaQA / ARC-Easy** – combines the
-  `TimoImhof/Splits_Subset_TriviaQa` subset for free-form answers and the
-  `ai2_arc` `ARC-Easy` configuration for multiple choice questions. Common
-  aliases (`train`, `validation`, `test`) return a blended set, while
-  `triviaqa:<split>` or `arc_easy:<split>` target individual sources.
+* **TriviaQA / ARC** – combines the
+  `TimoImhof/Splits_Subset_TriviaQa` subset for free-form answers with the
+  `ai2_arc` `ARC-Easy` and `ARC-Challenge` configurations for multiple choice
+  questions. Common aliases (`train`, `validation`, `test`) return a blended
+  set using ARC-Easy, while `triviaqa:<split>`, `arc_easy:<split>`, or
+  `arc_challenge:<split>` target individual sources.
 
 Use the `identifier` argument to select a specific example by index or by its
 unique identifier:
