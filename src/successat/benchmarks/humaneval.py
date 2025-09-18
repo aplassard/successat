@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from typing import Dict, List, Sequence
 
-from datasets import load_dataset
+from ..datasets import load_dataset
 
 from .base import Benchmark, BenchmarkExample
 

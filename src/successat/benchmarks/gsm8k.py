@@ -6,7 +6,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Sequence
 
-from datasets import load_dataset
+from ..datasets import load_dataset
 
 from .base import Benchmark, BenchmarkExample
 

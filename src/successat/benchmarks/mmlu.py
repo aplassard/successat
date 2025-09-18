@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Mapping, Sequence
 
-from datasets import load_dataset
+from ..datasets import load_dataset
 
 from .base import Benchmark, BenchmarkExample
 
