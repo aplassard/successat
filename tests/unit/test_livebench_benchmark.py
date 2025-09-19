@@ -11,7 +11,11 @@ from typing import Any, Iterable, List
 
 import pytest
 
-from successat.benchmarks.livebench import LiveBenchCodingBenchmark
+from successat.benchmarks.livebench import (
+    LiveBenchCodingBenchmark,
+    LiveBenchMathBenchmark,
+    LiveBenchReasoningBenchmark,
+)
 
 
 class _DummyClient:
@@ -105,6 +109,45 @@ def _stdin_row() -> dict[str, Any]:
         "remainder": "",
         "solution": "",
         "partial_solution": "",
+    }
+
+
+def _reasoning_row() -> dict[str, Any]:
+    return {
+        "question_id": "reason-1",
+        "category": "reasoning",
+        "ground_truth": "1, filmmaking, police-officer, journalist",
+        "turns": [
+            (
+                "Solve the zebra puzzle and report your answers inside a <solution> tag "
+                "as position, hobby, job, other job."
+            ),
+        ],
+        "task": "zebra_puzzle",
+        "level": 15,
+        "livebench_release_date": datetime(2024, 11, 25),
+        "livebench_removal_date": None,
+    }
+
+
+def _math_row() -> dict[str, Any]:
+    return {
+        "question_id": "math-1",
+        "category": "math",
+        "ground_truth": "1,6,7",
+        "turns": [
+            (
+                "Fill in the missing expressions for the provided solution. "
+                "Return your final answer as 'Answer: <ids>'."
+            ),
+        ],
+        "task": "olympiad",
+        "subtask": "usamo",
+        "year": "2023",
+        "hardness": 1.0,
+        "expressions": "<expression 1> ...",
+        "livebench_release_date": datetime(2024, 8, 31),
+        "livebench_removal_date": None,
     }
 
 
@@ -228,4 +271,93 @@ Hope that helps!
     assert correct is True
     assert details["tests_run"] == 2
     assert details["test_mode"] == "functional"
+
+
+def test_livebench_reasoning_scoring(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [_reasoning_row()]
+
+    def fake_dataset(*args: Any, **kwargs: Any) -> List[dict[str, Any]]:
+        return rows
+
+    monkeypatch.setattr("successat.benchmarks.livebench.load_dataset", fake_dataset)
+
+    benchmark = LiveBenchReasoningBenchmark(_DummyClient())
+    example = benchmark.examples_for_split("latest")[0]
+
+    response = (
+        "Thought process...\n"
+        "<solution>Position 1, The filmmaking, police officer, journalist.</solution>"
+    )
+
+    correct, details = benchmark.is_correct(example, response, None)
+
+    assert correct is True
+    assert details["predicted_normalised"] == [
+        "1",
+        "filmmaking",
+        "police officer",
+        "journalist",
+    ]
+
+
+def test_livebench_reasoning_requires_solution(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [_reasoning_row()]
+
+    def fake_dataset(*args: Any, **kwargs: Any) -> List[dict[str, Any]]:
+        return rows
+
+    monkeypatch.setattr("successat.benchmarks.livebench.load_dataset", fake_dataset)
+
+    benchmark = LiveBenchReasoningBenchmark(_DummyClient())
+    example = benchmark.examples_for_split("latest")[0]
+
+    correct, details = benchmark.is_correct(example, "Answer: 1, filmmaking", None)
+
+    assert correct is False
+    assert details["error"] == "no solution block found"
+
+
+def test_livebench_math_scoring(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [_math_row()]
+
+    def fake_dataset(*args: Any, **kwargs: Any) -> List[dict[str, Any]]:
+        return rows
+
+    monkeypatch.setattr("successat.benchmarks.livebench.load_dataset", fake_dataset)
+
+    benchmark = LiveBenchMathBenchmark(_DummyClient())
+    example = benchmark.examples_for_split("latest")[0]
+
+    response = "Detailed reasoning...\nAnswer: 1, 6, 7"
+
+    correct, details = benchmark.is_correct(example, response, None)
+
+    assert correct is True
+    assert details["predicted_numbers"] == ["1", "6", "7"]
+
+    wrong = "Answer: 1, 6, 8"
+    correct, details = benchmark.is_correct(example, wrong, None)
+
+    assert correct is False
+    assert details["error"] == "answer mismatch"
+    assert details["mismatch_index"] == 2
+
+
+def test_livebench_math_parses_answer_on_new_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [_math_row()]
+
+    def fake_dataset(*args: Any, **kwargs: Any) -> List[dict[str, Any]]:
+        return rows
+
+    monkeypatch.setattr("successat.benchmarks.livebench.load_dataset", fake_dataset)
+
+    benchmark = LiveBenchMathBenchmark(_DummyClient())
+    example = benchmark.examples_for_split("latest")[0]
+
+    response = "Reasoning...\nAnswer:\n1, 6, 7"
+
+    correct, details = benchmark.is_correct(example, response, None)
+
+    assert correct is True
+    assert details["predicted_numbers"] == ["1", "6", "7"]
 

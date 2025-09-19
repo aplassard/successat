@@ -26,36 +26,106 @@ _CODE_FENCE_RE = re.compile(r"^```(?:python)?\s*|```$", re.IGNORECASE | re.MULTI
 _CODE_BLOCK_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 _SOLUTION_CLASS_RE = re.compile(r"^\s*class\s+Solution\b", re.MULTILINE)
 _SIGNATURE_RE = re.compile(r"def\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)")
+_SOLUTION_TAG_RE = re.compile(r"<solution>(.*?)</solution>", re.IGNORECASE | re.DOTALL)
+_ANSWER_LINE_RE = re.compile(r"answer\s*:\s*(.*)", re.IGNORECASE)
+
+_NUMBER_WORDS = {
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+    "eleven": "11",
+    "twelve": "12",
+    "thirteen": "13",
+    "fourteen": "14",
+    "fifteen": "15",
+    "sixteen": "16",
+    "seventeen": "17",
+    "eighteen": "18",
+    "nineteen": "19",
+    "twenty": "20",
+}
+
+_ORDINAL_WORDS = {
+    "first": "1",
+    "second": "2",
+    "third": "3",
+    "fourth": "4",
+    "fifth": "5",
+    "sixth": "6",
+    "seventh": "7",
+    "eighth": "8",
+    "ninth": "9",
+    "tenth": "10",
+}
+
+_BOOLEAN_NORMALISATIONS = {
+    "y": "yes",
+    "yes": "yes",
+    "yeah": "yes",
+    "yep": "yes",
+    "true": "yes",
+    "n": "no",
+    "no": "no",
+    "nope": "no",
+    "false": "no",
+}
 
 
-@dataclass
-class _LiveBenchExampleData:
-    """Additional information required to evaluate LiveBench examples."""
+@dataclass(frozen=True)
+class _ConvertedRow:
+    """Representation of a processed LiveBench dataset row."""
 
-    public_tests_json: str
-    private_tests_blob: str | None
-    test_mode: str
-    method_name: str | None
-    parameter_count: int
-    starter_code: str
+    example: BenchmarkExample
+    release_key: str
+    release_date: datetime | None
+    extra_data: Any = None
 
 
-class LiveBenchCodingBenchmark(Benchmark):
-    """Evaluate LiveBench coding tasks using public and private test suites."""
+def _prepare_prompt(row: Mapping[str, Any], fallback: str = "") -> tuple[str, Sequence[Mapping[str, str]] | None]:
+    """Return the primary prompt and optional extra messages for a dataset row."""
 
-    name = "livebench-coding"
-    description = "Python coding problems from LiveBench with execution-based scoring."
-    dataset_name = "livebench/coding"
+    turns = [
+        turn
+        for turn in row.get("turns", [])
+        if isinstance(turn, str) and turn.strip()
+    ]
+    prompt = turns[-1] if turns else fallback
+    prompt = (prompt or "").strip()
+    if not prompt:
+        prompt = fallback.strip()
+
+    extra_messages: Sequence[Mapping[str, str]] | None = None
+    if len(turns) > 1:
+        extra_messages = [
+            {"role": "user", "content": text}
+            for text in turns[:-1]
+            if text.strip()
+        ]
+
+    return prompt, extra_messages if extra_messages else None
+
+
+class _BaseLiveBenchBenchmark(Benchmark):
+    """Common functionality shared by LiveBench benchmark variants."""
+
+    dataset_name: str
     default_split = "latest"
 
     def __init__(self, client) -> None:
         super().__init__(client)
         self._examples_by_split: MutableMapping[str, List[BenchmarkExample]] = {}
         self._split_order: List[str] | None = None
-        self._example_data: dict[str, _LiveBenchExampleData] = {}
         self._prepared = False
 
-    # Benchmark API ------------------------------------------------------
+    # Benchmark API --------------------------------------------------
     def available_splits(self) -> Sequence[str]:
         self._ensure_prepared()
         if self._split_order is None:
@@ -74,34 +144,7 @@ class LiveBenchCodingBenchmark(Benchmark):
             )
             raise ValueError(msg) from exc
 
-    def is_correct(self, example: BenchmarkExample, response_text: str, response: object):
-        example_data = self._example_data.get(example.id)
-        if example_data is None:  # pragma: no cover - defensive guard
-            return False, {"error": f"no evaluation data for example {example.id}"}
-
-        candidate_code = self._strip_code_fence(response_text)
-        if not candidate_code.strip():
-            return False, {"error": "model response did not contain Python code"}
-
-        try:
-            compiled = compile(candidate_code, "<candidate>", "exec")
-        except SyntaxError as exc:
-            return False, {"error": f"candidate code failed to compile: {exc}"}
-
-        try:
-            tests = self._load_tests(example_data)
-        except ValueError as exc:
-            return False, {"error": str(exc)}
-
-        if not tests:
-            return False, {"error": "benchmark example does not define any tests"}
-
-        if example_data.test_mode == "stdin":
-            return self._run_stdin_tests(compiled, tests)
-
-        return self._run_functional_tests(compiled, tests, example_data)
-
-    # Internal helpers ---------------------------------------------------
+    # Internal helpers -----------------------------------------------
     def _ensure_prepared(self) -> None:
         if self._prepared:
             return
@@ -111,42 +154,49 @@ class LiveBenchCodingBenchmark(Benchmark):
         self._prepared = True
 
     def _prepare_examples(self, rows: Iterable[Mapping[str, Any]]) -> None:
+        self._clear_extra_data()
+
         release_groups: MutableMapping[str, List[BenchmarkExample]] = defaultdict(list)
         release_dates: MutableMapping[str, datetime] = {}
         all_examples: List[BenchmarkExample] = []
 
         for index, row in enumerate(rows):
-            example, example_data, release_key, release_date = self._convert_row(row, index)
-            self._example_data[example.id] = example_data
-            release_groups[release_key].append(example)
-            if release_date is not None:
-                release_dates[release_key] = release_date
-            all_examples.append(example)
+            converted = self._convert_row(row, index)
+            if converted.extra_data is not None:
+                self._store_example_data(converted.example.id, converted.extra_data)
+            release_groups[converted.release_key].append(converted.example)
+            if converted.release_date is not None:
+                release_dates[converted.release_key] = converted.release_date
+            all_examples.append(converted.example)
 
         if not all_examples:
             self._examples_by_split = {self.default_split: []}
             self._split_order = [self.default_split]
             return
 
-        self._examples_by_split = {"all": all_examples}
+        self._examples_by_split = {"all": list(all_examples)}
 
         for key, examples in release_groups.items():
-            self._examples_by_split[f"release-{key}"] = examples
+            self._examples_by_split[f"release-{key}"] = list(examples)
 
-        latest_key = None
-        if release_dates:
-            latest_key = max(release_dates, key=lambda item: (release_dates[item], item))
-            self._examples_by_split[self.default_split] = list(release_groups[latest_key])
-        else:
-            latest_key = next(iter(release_groups))
-            self._examples_by_split[self.default_split] = list(release_groups[latest_key])
+        if release_groups:
+            if release_dates:
+                latest_key = max(
+                    release_dates,
+                    key=lambda item: (release_dates[item], item),
+                )
+            else:
+                latest_key = next(iter(release_groups))
+            self._examples_by_split[self.default_split] = list(
+                release_groups[latest_key]
+            )
 
-        history_examples: List[BenchmarkExample] = []
-        for key, examples in release_groups.items():
-            if key != latest_key:
-                history_examples.extend(examples)
-        if history_examples:
-            self._examples_by_split["history"] = history_examples
+            history_examples: List[BenchmarkExample] = []
+            for key, examples in release_groups.items():
+                if key != latest_key:
+                    history_examples.extend(examples)
+            if history_examples:
+                self._examples_by_split["history"] = list(history_examples)
 
         for name, examples in list(self._examples_by_split.items()):
             self._examples_by_split[name] = list(examples)
@@ -180,14 +230,93 @@ class LiveBenchCodingBenchmark(Benchmark):
         self,
         row: Mapping[str, Any],
         index: int,
-    ) -> tuple[BenchmarkExample, _LiveBenchExampleData, str, datetime | None]:
+    ) -> _ConvertedRow:  # pragma: no cover - defined by subclasses
+        raise NotImplementedError
+
+    def _clear_extra_data(self) -> None:
+        """Reset any subclass-specific caches prior to loading data."""
+
+    def _store_example_data(self, example_id: str, data: Any) -> None:
+        """Persist extra data associated with ``example_id`` if required."""
+
+    @staticmethod
+    def _format_datetime(value: Any) -> str | None:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return None
+
+    @staticmethod
+    def _format_release_key(release_dt: datetime | None) -> str:
+        if release_dt is None:
+            return "unknown"
+        return release_dt.strftime("%Y-%m")
+
+@dataclass
+class _LiveBenchExampleData:
+    """Additional information required to evaluate LiveBench examples."""
+
+    public_tests_json: str
+    private_tests_blob: str | None
+    test_mode: str
+    method_name: str | None
+    parameter_count: int
+    starter_code: str
+
+
+class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
+    """Evaluate LiveBench coding tasks using public and private test suites."""
+
+    name = "livebench-coding"
+    description = "Python coding problems from LiveBench with execution-based scoring."
+    dataset_name = "livebench/coding"
+
+    def __init__(self, client) -> None:
+        super().__init__(client)
+        self._example_data: dict[str, _LiveBenchExampleData] = {}
+
+    def is_correct(self, example: BenchmarkExample, response_text: str, response: object):
+        example_data = self._example_data.get(example.id)
+        if example_data is None:  # pragma: no cover - defensive guard
+            return False, {"error": f"no evaluation data for example {example.id}"}
+
+        candidate_code = self._strip_code_fence(response_text)
+        if not candidate_code.strip():
+            return False, {"error": "model response did not contain Python code"}
+
+        try:
+            compiled = compile(candidate_code, "<candidate>", "exec")
+        except SyntaxError as exc:
+            return False, {"error": f"candidate code failed to compile: {exc}"}
+
+        try:
+            tests = self._load_tests(example_data)
+        except ValueError as exc:
+            return False, {"error": str(exc)}
+
+        if not tests:
+            return False, {"error": "benchmark example does not define any tests"}
+
+        if example_data.test_mode == "stdin":
+            return self._run_stdin_tests(compiled, tests)
+
+        return self._run_functional_tests(compiled, tests, example_data)
+
+    # Internal helpers ---------------------------------------------------
+    def _clear_extra_data(self) -> None:
+        self._example_data.clear()
+
+    def _store_example_data(self, example_id: str, data: Any) -> None:
+        if isinstance(data, _LiveBenchExampleData):
+            self._example_data[example_id] = data
+
+    def _convert_row(
+        self,
+        row: Mapping[str, Any],
+        index: int,
+    ) -> _ConvertedRow:
         question_id = str(row["question_id"])
-        turns = [turn for turn in row.get("turns", []) if isinstance(turn, str) and turn.strip()]
-        prompt = turns[-1] if turns else row.get("original_json", {}).get("question_content", "")
-        prompt = prompt.strip()
-        extra_messages: List[Mapping[str, str]] | None = None
-        if len(turns) > 1:
-            extra_messages = [{"role": "user", "content": text} for text in turns[:-1]]
+        fallback_prompt = row.get("original_json", {}).get("question_content", "")
+        prompt, extra_messages = _prepare_prompt(row, fallback=fallback_prompt)
 
         release_dt: datetime | None = row.get("livebench_release_date")
         release_key = self._format_release_key(release_dt)
@@ -199,7 +328,6 @@ class LiveBenchCodingBenchmark(Benchmark):
         method_name, params = self._parse_signature(starter_code)
 
         tests_preview = self._preview_test_types(public_tests_json, private_blob)
-        target = "pass"
         metadata = {
             "question_id": question_id,
             "question_title": row.get("question_title"),
@@ -216,35 +344,27 @@ class LiveBenchCodingBenchmark(Benchmark):
         example = BenchmarkExample(
             id=f"livebench-coding-{question_id}",
             prompt=prompt,
-            target=target,
+            target="pass",
             metadata=metadata,
             system_prompt=None,
             extra_messages=extra_messages,
         )
 
-        test_mode = tests_preview["mode"]
         example_data = _LiveBenchExampleData(
             public_tests_json=public_tests_json,
             private_tests_blob=private_blob,
-            test_mode=test_mode,
+            test_mode=tests_preview["mode"],
             method_name=method_name,
             parameter_count=len(params),
             starter_code=starter_code,
         )
 
-        return example, example_data, release_key, release_dt
-
-    @staticmethod
-    def _format_datetime(value: Any) -> str | None:
-        if isinstance(value, datetime):
-            return value.isoformat()
-        return None
-
-    @staticmethod
-    def _format_release_key(release_dt: datetime | None) -> str:
-        if release_dt is None:
-            return "unknown"
-        return release_dt.strftime("%Y-%m")
+        return _ConvertedRow(
+            example=example,
+            release_key=release_key,
+            release_date=release_dt,
+            extra_data=example_data,
+        )
 
     @staticmethod
     def _strip_code_fence(text: str) -> str:
@@ -468,3 +588,289 @@ class LiveBenchCodingBenchmark(Benchmark):
     def _text_outputs_match(expected: str, actual: str) -> bool:
         return expected.strip() == actual.strip()
 
+
+class LiveBenchReasoningBenchmark(_BaseLiveBenchBenchmark):
+    """Evaluate LiveBench reasoning tasks with structured answers."""
+
+    name = "livebench-reasoning"
+    description = "Logic and reasoning questions from LiveBench with string-based scoring."
+    dataset_name = "livebench/reasoning"
+
+    def _convert_row(
+        self,
+        row: Mapping[str, Any],
+        index: int,
+    ) -> _ConvertedRow:
+        question_id = str(row["question_id"])
+        prompt, extra_messages = _prepare_prompt(row)
+
+        release_dt: datetime | None = row.get("livebench_release_date")
+        release_key = self._format_release_key(release_dt)
+
+        ground_truth = str(row.get("ground_truth", "")).strip()
+        metadata = {
+            "question_id": question_id,
+            "category": row.get("category"),
+            "task": row.get("task"),
+            "level": row.get("level"),
+            "livebench_release_date": self._format_datetime(release_dt),
+            "livebench_removal_date": self._format_datetime(row.get("livebench_removal_date")),
+        }
+
+        example = BenchmarkExample(
+            id=f"livebench-reasoning-{question_id}",
+            prompt=prompt,
+            target=ground_truth,
+            metadata=metadata,
+            system_prompt=None,
+            extra_messages=extra_messages,
+        )
+
+        return _ConvertedRow(
+            example=example,
+            release_key=release_key,
+            release_date=release_dt,
+            extra_data=None,
+        )
+
+    def is_correct(
+        self,
+        example: BenchmarkExample,
+        response_text: str,
+        response: object,
+    ) -> tuple[bool, Mapping[str, Any]]:
+        expected_answers = self._parse_expected_answers(example.target)
+        solution_block = self._extract_solution_block(response_text)
+
+        details: dict[str, Any] = {
+            "expected_answers": expected_answers,
+        }
+
+        if solution_block is None:
+            details["error"] = "no solution block found"
+            return False, details
+
+        predicted_answers = self._split_solution_answers(solution_block)
+        details["solution_block"] = solution_block
+        details["predicted_answers"] = predicted_answers
+
+        if not predicted_answers:
+            details["error"] = "no answers found in solution block"
+            return False, details
+
+        expected_normalised = [self._normalise_answer(value) for value in expected_answers]
+        predicted_normalised = [self._normalise_answer(value) for value in predicted_answers]
+
+        details["expected_normalised"] = expected_normalised
+        details["predicted_normalised"] = predicted_normalised
+
+        if len(predicted_normalised) != len(expected_normalised):
+            details["error"] = "incorrect number of answers"
+            details["expected_count"] = len(expected_normalised)
+            details["predicted_count"] = len(predicted_normalised)
+            return False, details
+
+        for index, (expected_value, predicted_value) in enumerate(
+            zip(expected_normalised, predicted_normalised)
+        ):
+            if expected_value != predicted_value:
+                details["error"] = "answer mismatch"
+                details["mismatch_index"] = index
+                details["expected_value"] = expected_value
+                details["predicted_value"] = predicted_value
+                return False, details
+
+        return True, details
+
+    @staticmethod
+    def _parse_expected_answers(target: Any) -> list[str]:
+        if target is None:
+            return []
+        if isinstance(target, str):
+            parts = [segment.strip() for segment in target.split(",")]
+        else:
+            parts = [str(target).strip()]
+        return [part for part in parts if part]
+
+    @staticmethod
+    def _extract_solution_block(response_text: str) -> str | None:
+        matches = _SOLUTION_TAG_RE.findall(response_text)
+        if matches:
+            return matches[-1].strip()
+        return None
+
+    @staticmethod
+    def _split_solution_answers(solution_block: str) -> list[str]:
+        cleaned = solution_block.strip()
+        if not cleaned:
+            return []
+
+        cleaned = re.sub(r"</?solution>", "", cleaned, flags=re.IGNORECASE)
+
+        if "," in cleaned:
+            parts = cleaned.split(",")
+        else:
+            lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+            if len(lines) > 1:
+                parts = lines
+            else:
+                parts = re.split(r"\s+", cleaned)
+
+        return [part.strip() for part in parts if part.strip()]
+
+    @staticmethod
+    def _normalise_answer(value: str) -> str:
+        cleaned = value.strip().lower()
+        cleaned = cleaned.strip(".,;:!?")
+        cleaned = cleaned.replace("-", " ")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = re.sub(r"^[\"'`]+|[\"'`]+$", "", cleaned)
+        cleaned = re.sub(r"^(the|a|an)\s+", "", cleaned)
+        cleaned = re.sub(r"^(position|person)\s+", "", cleaned)
+        cleaned = re.sub(r"^at\s+", "", cleaned)
+
+        match = re.fullmatch(r"(-?\d+)(?:st|nd|rd|th)?", cleaned)
+        if match:
+            cleaned = match.group(1)
+
+        if cleaned in _BOOLEAN_NORMALISATIONS:
+            cleaned = _BOOLEAN_NORMALISATIONS[cleaned]
+        if cleaned in _ORDINAL_WORDS:
+            cleaned = _ORDINAL_WORDS[cleaned]
+        if cleaned in _NUMBER_WORDS:
+            cleaned = _NUMBER_WORDS[cleaned]
+
+        cleaned = re.sub(r"^(position|person)\s+", "", cleaned)
+        cleaned = cleaned.strip()
+        return cleaned
+
+
+class LiveBenchMathBenchmark(_BaseLiveBenchBenchmark):
+    """Evaluate LiveBench math reasoning tasks using expression identifiers."""
+
+    name = "livebench-math"
+    description = "Mathematical reasoning tasks from LiveBench scored via expression IDs."
+    dataset_name = "livebench/math"
+
+    def _convert_row(
+        self,
+        row: Mapping[str, Any],
+        index: int,
+    ) -> _ConvertedRow:
+        question_id = str(row["question_id"])
+        prompt, extra_messages = _prepare_prompt(row)
+
+        release_dt: datetime | None = row.get("livebench_release_date")
+        release_key = self._format_release_key(release_dt)
+
+        ground_truth = str(row.get("ground_truth", "")).strip()
+        metadata = {
+            "question_id": question_id,
+            "category": row.get("category"),
+            "task": row.get("task"),
+            "subtask": row.get("subtask"),
+            "year": row.get("year"),
+            "hardness": row.get("hardness"),
+            "expressions": row.get("expressions"),
+            "livebench_release_date": self._format_datetime(release_dt),
+            "livebench_removal_date": self._format_datetime(row.get("livebench_removal_date")),
+        }
+
+        example = BenchmarkExample(
+            id=f"livebench-math-{question_id}",
+            prompt=prompt,
+            target=ground_truth,
+            metadata=metadata,
+            system_prompt=None,
+            extra_messages=extra_messages,
+        )
+
+        return _ConvertedRow(
+            example=example,
+            release_key=release_key,
+            release_date=release_dt,
+            extra_data=None,
+        )
+
+    def is_correct(
+        self,
+        example: BenchmarkExample,
+        response_text: str,
+        response: object,
+    ) -> tuple[bool, Mapping[str, Any]]:
+        expected_numbers = self._extract_numbers(example.target)
+        answer_line = self._extract_answer_line(response_text)
+
+        details: dict[str, Any] = {
+            "expected_numbers": expected_numbers,
+        }
+
+        if answer_line is None:
+            details["error"] = "answer line not found"
+            return False, details
+
+        predicted_numbers = self._extract_numbers(answer_line)
+        details["answer_line"] = answer_line
+        details["predicted_numbers"] = predicted_numbers
+
+        if not predicted_numbers:
+            details["error"] = "no numeric answers found"
+            return False, details
+
+        if len(predicted_numbers) != len(expected_numbers):
+            details["error"] = "incorrect number of answers"
+            details["expected_count"] = len(expected_numbers)
+            details["predicted_count"] = len(predicted_numbers)
+            return False, details
+
+        for index, (expected_value, predicted_value) in enumerate(
+            zip(expected_numbers, predicted_numbers)
+        ):
+            if expected_value != predicted_value:
+                details["error"] = "answer mismatch"
+                details["mismatch_index"] = index
+                details["expected_value"] = expected_value
+                details["predicted_value"] = predicted_value
+                return False, details
+
+        return True, details
+
+    @staticmethod
+    def _extract_numbers(value: Any) -> list[str]:
+        if value is None:
+            return []
+        text = str(value)
+        return re.findall(r"-?\d+", text)
+
+    @staticmethod
+    def _extract_answer_line(response_text: str) -> str | None:
+        lines = response_text.splitlines()
+        answer_value: str | None = None
+
+        for index, line in enumerate(lines):
+            match = _ANSWER_LINE_RE.search(line)
+            if match:
+                candidate = match.group(1).strip()
+                if candidate:
+                    answer_value = candidate
+                elif index + 1 < len(lines):
+                    next_line = lines[index + 1].strip()
+                    if next_line:
+                        answer_value = next_line
+                continue
+
+            if line.strip().lower() == "answer" and index + 1 < len(lines):
+                next_line = lines[index + 1].strip()
+                if next_line:
+                    answer_value = next_line
+
+        if answer_value is not None and answer_value.strip():
+            return answer_value.strip()
+
+        matches = _ANSWER_LINE_RE.findall(response_text)
+        if matches:
+            candidate = matches[-1].strip()
+            if candidate:
+                return candidate
+
+        return None

@@ -37,7 +37,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-b",
         help=(
             "Name of the benchmark to execute (e.g. gsm8k, mmlu, humaneval, "
-            "humaneval+, livebench-coding)."
+            "humaneval+, livebench-coding, livebench-reasoning, livebench-math)."
         ),
     )
     parser.add_argument(
