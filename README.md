@@ -128,6 +128,52 @@ intended for environments where the necessary credentials are available. The
 object, extracted text, correctness flag, and metadata describing the
 evaluation.
 
+### Batch execution with `BenchmarkRunner`
+
+When you need to drive multiple benchmarks at once—for example to populate a
+dashboard or forward live updates to UDNi—you can use the
+`successat.benchmarks.BenchmarkRunner`. The runner coordinates a set of
+`BenchmarkRunSpec` definitions and limits concurrent model calls with an
+asyncio semaphore.
+
+```python
+from successat.benchmarks import BenchmarkRunSpec, BenchmarkRunner
+from successat.llm.clients import OpenAIClient
+
+client = OpenAIClient.from_env()
+
+specs = [
+    BenchmarkRunSpec("gsm8k", client=client, identifier=0, split="test"),
+    BenchmarkRunSpec("mmlu", client=client, identifier=0, split="validation"),
+]
+
+udni_updates = []
+
+
+def send_to_udni(spec: BenchmarkRunSpec, result) -> None:
+    udni_updates.append(
+        {
+            "benchmark": spec.benchmark,
+            "example": result.example_id,
+            "correct": result.correct,
+            "payload": result.metadata.get("evaluation_details"),
+        }
+    )
+
+
+runner = BenchmarkRunner(max_concurrency=2)
+results = runner.run_all(specs, result_callback=send_to_udni)
+
+print(results[0].response_text)
+print(udni_updates[-1])
+```
+
+The synchronous `run_all` helper internally manages the event loop. If you are
+already inside an asyncio application, call `await runner.run_all_async(...)`
+instead. The optional `result_callback` parameter accepts synchronous or
+asynchronous callables and enables direct integration with monitoring systems
+or custom logging pipelines.
+
 ## Command line usage
 
 The package also installs a `successat` console script that provides a thin
