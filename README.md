@@ -159,6 +159,15 @@ execution will download the corresponding dataset artefacts to the local cache.
   `openai_humaneval` test harness.
 * **HumanEval+** – runs the EvalPlus `evalplus/humanevalplus` variant with
   augmented unit tests derived from the original problems.
+* **LiveBench Coding** – executes LiveBench coding problems against public and
+  private unit tests sourced from the `livebench/coding` dataset. Splits
+  include rolling monthly releases alongside historical groupings.
+* **LiveBench Reasoning** – scores structured logic tasks from
+  `livebench/reasoning` by comparing the answers in the `<solution>` block with
+  the ground truth tuples.
+* **LiveBench Math** – validates LiveBench math puzzles from `livebench/math`
+  by matching the ordered list of expression identifiers provided in the
+  authoritative solutions.
 * **TriviaQA / ARC** – combines the
   `TimoImhof/Splits_Subset_TriviaQa` subset for free-form answers with the
   `ai2_arc` `ARC-Easy` and `ARC-Challenge` configurations for multiple choice

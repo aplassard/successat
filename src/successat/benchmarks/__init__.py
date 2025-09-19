@@ -13,7 +13,11 @@ from .base import (
 )
 from .gsm8k import GSM8KBenchmark
 from .humaneval import HumanEvalBenchmark, HumanEvalPlusBenchmark
-from .livebench import LiveBenchCodingBenchmark
+from .livebench import (
+    LiveBenchCodingBenchmark,
+    LiveBenchMathBenchmark,
+    LiveBenchReasoningBenchmark,
+)
 from .mmlu import MMLUBenchmark
 from .triviaqa import TriviaQABenchmark
 
@@ -27,6 +31,8 @@ __all__ = [
     "HumanEvalPlusBenchmark",
     "MMLUBenchmark",
     "LiveBenchCodingBenchmark",
+    "LiveBenchMathBenchmark",
+    "LiveBenchReasoningBenchmark",
     "TriviaQABenchmark",
     "benchmark_registry",
     "register_benchmarks",
@@ -50,6 +56,8 @@ register_benchmarks(
         HumanEvalBenchmark,
         HumanEvalPlusBenchmark,
         LiveBenchCodingBenchmark,
+        LiveBenchReasoningBenchmark,
+        LiveBenchMathBenchmark,
         TriviaQABenchmark,
     ),
 )
