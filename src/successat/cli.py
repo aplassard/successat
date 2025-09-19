@@ -35,7 +35,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--benchmark",
         "-b",
-        help="Name of the benchmark to execute (e.g. gsm8k, mmlu, humaneval, humaneval+).",
+        help=(
+            "Name of the benchmark to execute (e.g. gsm8k, mmlu, humaneval, "
+            "humaneval+, livebench-coding)."
+        ),
     )
     parser.add_argument(
         "--client",
