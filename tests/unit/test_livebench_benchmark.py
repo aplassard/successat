@@ -194,3 +194,38 @@ print(value * 2)
     assert details["error"] == "script output did not match expected value"
     assert details["test_index"] == 0
 
+
+def test_livebench_prefers_last_code_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [_functional_row()]
+
+    def fake_dataset(*args: Any, **kwargs: Any) -> List[dict[str, Any]]:
+        return rows
+
+    monkeypatch.setattr("successat.benchmarks.livebench.load_dataset", fake_dataset)
+
+    benchmark = LiveBenchCodingBenchmark(_DummyClient())
+    example = benchmark.examples_for_split("latest")[0]
+
+    response = """Here is how you might approach the problem.
+
+```python
+This is pseudocode and will not compile.
+```
+
+Now for the final implementation:
+
+```python
+class Solution:
+    def add(self, a: int, b: int) -> int:
+        return a + b
+```
+
+Hope that helps!
+"""
+
+    correct, details = benchmark.is_correct(example, response, None)
+
+    assert correct is True
+    assert details["tests_run"] == 2
+    assert details["test_mode"] == "functional"
+

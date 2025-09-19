@@ -23,6 +23,8 @@ from .base import Benchmark, BenchmarkExample
 
 
 _CODE_FENCE_RE = re.compile(r"^```(?:python)?\s*|```$", re.IGNORECASE | re.MULTILINE)
+_CODE_BLOCK_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+_SOLUTION_CLASS_RE = re.compile(r"^\s*class\s+Solution\b", re.MULTILINE)
 _SIGNATURE_RE = re.compile(r"def\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)")
 
 
@@ -246,6 +248,14 @@ class LiveBenchCodingBenchmark(Benchmark):
 
     @staticmethod
     def _strip_code_fence(text: str) -> str:
+        fenced_blocks = _CODE_BLOCK_RE.findall(text)
+        if fenced_blocks:
+            return fenced_blocks[-1].strip()
+
+        match = _SOLUTION_CLASS_RE.search(text)
+        if match:
+            return text[match.start() :].strip()
+
         return _CODE_FENCE_RE.sub("", text).strip()
 
     @staticmethod
