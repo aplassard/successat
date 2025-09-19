@@ -16,6 +16,7 @@ from .humaneval import HumanEvalBenchmark, HumanEvalPlusBenchmark
 from .livebench import LiveBenchCodingBenchmark
 from .mmlu import MMLUBenchmark
 from .triviaqa import TriviaQABenchmark
+from .runner import BenchmarkRunSpec, BenchmarkRunner, ResultCallback
 
 __all__ = [
     "Benchmark",
@@ -31,6 +32,9 @@ __all__ = [
     "benchmark_registry",
     "register_benchmarks",
     "run_benchmark",
+    "BenchmarkRunner",
+    "BenchmarkRunSpec",
+    "ResultCallback",
 ]
 
 
