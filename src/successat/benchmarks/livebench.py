@@ -283,8 +283,21 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
         if not candidate_code.strip():
             return False, {"error": "model response did not contain Python code"}
 
+        source_to_compile = candidate_code
+        task = (example.metadata or {}).get("task")
+        starter_code = example_data.starter_code
+        if (
+            task == "coding_completion"
+            and starter_code.strip()
+            and example_data.test_mode != "stdin"
+            and not _SOLUTION_CLASS_RE.search(candidate_code)
+        ):
+            source_to_compile = self._merge_starter_and_completion(
+                starter_code, candidate_code
+            )
+
         try:
-            compiled = compile(candidate_code, "<candidate>", "exec")
+            compiled = compile(source_to_compile, "<candidate>", "exec")
         except SyntaxError as exc:
             return False, {"error": f"candidate code failed to compile: {exc}"}
 
@@ -365,6 +378,50 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
             release_date=release_dt,
             extra_data=example_data,
         )
+
+    @staticmethod
+    def _merge_starter_and_completion(starter: str, completion: str) -> str:
+        indentation = LiveBenchCodingBenchmark._infer_completion_indent(starter)
+        completion = completion.lstrip("\n")
+
+        starter_body = starter.rstrip("\r\n")
+        starter_lines = starter_body.split("\n")
+        if starter_lines and starter_lines[-1].strip() == "":
+            starter_lines.pop()
+        starter_prefix = "\n".join(starter_lines)
+        if starter_prefix:
+            starter_prefix += "\n"
+
+        if indentation:
+            adjusted_lines: list[str] = []
+            for line in completion.splitlines():
+                if not line.strip():
+                    adjusted_lines.append(line)
+                    continue
+                first_char = line[0]
+                if first_char.isspace():
+                    adjusted_lines.append(line)
+                else:
+                    adjusted_lines.append(indentation + line)
+            completion = "\n".join(adjusted_lines)
+
+        return starter_prefix + completion
+
+    @staticmethod
+    def _infer_completion_indent(starter: str) -> str:
+        for line in reversed(starter.splitlines()):
+            if not line:
+                continue
+            whitespace = line[: len(line) - len(line.lstrip(" 	"))]
+            stripped = line.strip()
+            if not stripped:
+                if whitespace:
+                    return whitespace
+                continue
+            if stripped.endswith(":"):
+                return whitespace + "    "
+            return whitespace
+        return ""
 
     @staticmethod
     def _strip_code_fence(text: str) -> str:

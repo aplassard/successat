@@ -77,6 +77,51 @@ def _functional_row() -> dict[str, Any]:
     }
 
 
+
+
+def _completion_row() -> dict[str, Any]:
+    starter = (
+        "class Solution:\n"
+        "    def sum_list(self, values: list[int]) -> int:\n"
+        "        total = sum(values)\n"
+    )
+    return {
+        "question_id": "completion-1",
+        "category": "coding",
+        "turns": [
+            "Complete the provided starter code.",
+            "Return only the missing continuation.",
+        ],
+        "question_title": "sum_list_completion",
+        "public_test_cases": json.dumps(
+            [
+                {"input": "[1, 2, 3]", "output": "6", "testtype": "functional"},
+                {"input": "[0, 5, 10]", "output": "15", "testtype": "functional"},
+            ]
+        ),
+        "private_test_cases": "",
+        "original_json": {
+            "starter_code": starter,
+            "question_content": "Calculate the sum of a list of integers.",
+            "metadata": json.dumps({"func_name": "sum_list"}),
+            "platform": "custom",
+            "question_id": "completion-1",
+            "contest_id": "contest",
+            "contest_date": datetime(2024, 8, 1),
+            "starter_code": starter,
+            "difficulty": "medium",
+        },
+        "release_date": datetime(2024, 8, 5),
+        "citation": "LiveBench",
+        "task": "coding_completion",
+        "livebench_release_date": datetime(2024, 8, 5),
+        "livebench_removal_date": None,
+        "remainder": "",
+        "solution": "",
+        "partial_solution": "",
+    }
+
+
 def _stdin_row() -> dict[str, Any]:
     return {
         "question_id": "stdin-1",
@@ -206,6 +251,54 @@ def test_livebench_functional_scoring(monkeypatch: pytest.MonkeyPatch) -> None:
     assert correct is False
     assert details["error"] == "candidate output did not match expected result"
     assert details["test_index"] == 0
+
+
+def test_merge_starter_completion_restores_indent() -> None:
+    starter = "class Solution:\n    def demo(self, items):\n        for value in items:\n"
+    completion = "print(value)\n    print('done')"
+
+    merged = LiveBenchCodingBenchmark._merge_starter_and_completion(
+        starter, completion
+    )
+
+    expected = (
+        "class Solution:\n"
+        "    def demo(self, items):\n"
+        "        for value in items:\n"
+        "            print(value)\n"
+        "    print('done')"
+    )
+
+    assert merged == expected
+
+
+# Tests coding-completion evaluation merges starter stubs before executing tests.
+
+def test_livebench_completion_task_merges_starter_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [_completion_row()]
+
+    def fake_dataset(*args: Any, **kwargs: Any) -> List[dict[str, Any]]:
+        return rows
+
+    monkeypatch.setattr(
+        "successat.benchmarks.livebench.load_dataset", fake_dataset
+    )
+
+    benchmark = LiveBenchCodingBenchmark(_DummyClient())
+    example = benchmark.examples_for_split("latest")[0]
+
+    response = """```python
+return total
+```
+"""
+
+    correct, details = benchmark.is_correct(example, response, None)
+
+    assert correct is True
+    assert details["tests_run"] == 2
+    assert details["test_mode"] == "functional"
 
 
 def test_livebench_stdin_scoring(monkeypatch: pytest.MonkeyPatch) -> None:
