@@ -56,6 +56,8 @@ def _build_result() -> BenchmarkResult:
         response_text="model response",
         correct=True,
         metadata={"expected": "model response"},
+        time_to_first_token=0.321,
+        total_time=0.654,
     )
 
 
@@ -110,6 +112,8 @@ def test_cli_runs_benchmark(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
     out = capsys.readouterr().out
     assert "Benchmark: gsm8k" in out
     assert "Response:\nmodel response" in out
+    assert "Time to first token: 0.321 s" in out
+    assert "Total time: 0.654 s" in out
 
     client = recorded["client"]
     assert isinstance(client, _DummyClient)
@@ -235,6 +239,8 @@ def test_cli_logs_results_to_directory(
     assert payload["benchmark"] == "gsm8k"
     assert payload["model"] == "dummy-model"
     assert payload["correct"] is True
+    assert payload["time_to_first_token"] == 0.321
+    assert payload["total_time"] == 0.654
 
 
 def test_cli_requires_directory_for_logging(
