@@ -249,9 +249,15 @@ def _format_result(result: BenchmarkResult) -> str:
         formatted_prompt,
         "Response:",
         formatted_response,
-        "Metadata:",
-        metadata,
     ]
+
+    if result.time_to_first_token is not None:
+        output_lines.append(f"Time to first token: {result.time_to_first_token:.3f} s")
+
+    if result.total_time is not None:
+        output_lines.append(f"Total time: {result.total_time:.3f} s")
+
+    output_lines.extend(["Metadata:", metadata])
     return "\n".join(output_lines)
 
 
@@ -284,6 +290,8 @@ def _log_result(result: BenchmarkResult, directory: Path) -> Path:
         "response_text": result.response_text,
         "correct": result.correct,
         "metadata": _sanitize_for_json(result.metadata),
+        "time_to_first_token": result.time_to_first_token,
+        "total_time": result.total_time,
     }
 
     try:
