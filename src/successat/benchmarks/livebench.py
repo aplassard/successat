@@ -78,6 +78,25 @@ _BOOLEAN_NORMALISATIONS = {
     "false": "no",
 }
 
+_UNICODE_OPERATOR_REPLACEMENTS = {
+    "≤": "<=",
+    "≥": ">=",
+    "≠": "!=",
+    "−": "-",
+    "–": "-",
+    "—": "-",
+    "“": '"',
+    "”": '"',
+    "‘": "'",
+    "’": "'",
+    "×": "*",
+    "÷": "/",
+    "·": "*",
+    "∗": "*",
+    "→": "->",
+    "←": "<-",
+}
+
 
 @dataclass(frozen=True)
 class _ConvertedRow:
@@ -354,6 +373,9 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
         starter_code = row.get("original_json", {}).get("starter_code", "") or ""
         method_name, params = self._parse_signature(starter_code)
 
+        prompt = self._inject_starter_code(prompt, starter_code)
+        system_prompt = self._select_system_prompt(row.get("task"))
+
         tests_preview = self._preview_test_types(public_tests_json, private_blob)
         metadata = {
             "question_id": question_id,
@@ -373,7 +395,7 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
             prompt=prompt,
             target="pass",
             metadata=metadata,
-            system_prompt=None,
+            system_prompt=system_prompt,
             extra_messages=extra_messages,
         )
 
@@ -391,6 +413,37 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
             release_key=release_key,
             release_date=release_dt,
             extra_data=example_data,
+        )
+
+    @staticmethod
+    def _inject_starter_code(prompt: str, starter_code: str) -> str:
+        if not prompt or not starter_code.strip():
+            return prompt
+
+        replacement_block = "```python\n" + starter_code.strip("\n") + "\n```"
+        updated, count = _CODE_BLOCK_RE.subn(replacement_block, prompt, count=1)
+        if count == 0:
+            return prompt
+        return updated
+
+    @staticmethod
+    def _select_system_prompt(task: str | None) -> str | None:
+        if not task:
+            return (
+                "You are an expert Python developer. Follow the user's last instructions exactly. "
+                "Respond with Python code only, inside a single markdown code block, with no explanations."
+            )
+
+        task_lower = task.lower()
+        if task_lower == "coding_completion":
+            return (
+                "You are an expert Python developer. Provide only the missing portion requested by the user. "
+                "Return Python code alone inside a markdown code block; do not repeat the starter code or add explanations."
+            )
+
+        return (
+            "You are an expert Python developer. Produce a complete solution that follows the user's request. "
+            "Reply with Python code only inside a single markdown code block, without any commentary."
         )
 
     @staticmethod
@@ -441,13 +494,24 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
     def _strip_code_fence(text: str) -> str:
         fenced_blocks = _CODE_BLOCK_RE.findall(text)
         if fenced_blocks:
-            return fenced_blocks[-1].strip()
+            return LiveBenchCodingBenchmark._normalise_code(fenced_blocks[-1].strip())
 
         match = _SOLUTION_CLASS_RE.search(text)
         if match:
-            return text[match.start() :].strip()
+            snippet = text[match.start() :].strip()
+            return LiveBenchCodingBenchmark._normalise_code(snippet)
 
-        return _CODE_FENCE_RE.sub("", text).strip()
+        stripped = _CODE_FENCE_RE.sub("", text).strip()
+        return LiveBenchCodingBenchmark._normalise_code(stripped)
+
+    @staticmethod
+    def _normalise_code(text: str) -> str:
+        if not text:
+            return text
+        for original, replacement in _UNICODE_OPERATOR_REPLACEMENTS.items():
+            if original in text:
+                text = text.replace(original, replacement)
+        return text
 
     @staticmethod
     def _parse_signature(code: str) -> tuple[str | None, tuple[str, ...]]:
@@ -627,13 +691,37 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
     def _parse_value(raw: str) -> Any:
         if raw == "":
             return ""
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
+        single_value = LiveBenchCodingBenchmark._parse_scalar_value(raw)
+        if single_value is not raw:
+            return single_value
+
+        if "\n" in raw:
+            multi_value = LiveBenchCodingBenchmark._parse_multi_value_string(raw)
+            if multi_value:
+                if len(multi_value) == 1:
+                    return multi_value[0]
+                return multi_value
+
+        return raw
+
+    @staticmethod
+    def _parse_scalar_value(raw: str) -> Any:
+        for parser in (json.loads, ast.literal_eval):
             try:
-                return ast.literal_eval(raw)
-            except (ValueError, SyntaxError):
-                return raw
+                return parser(raw)
+            except (json.JSONDecodeError, ValueError, SyntaxError):
+                continue
+        return raw
+
+    @staticmethod
+    def _parse_multi_value_string(raw: str) -> list[Any]:
+        values: list[Any] = []
+        for segment in raw.splitlines():
+            stripped = segment.strip()
+            if not stripped:
+                continue
+            values.append(LiveBenchCodingBenchmark._parse_scalar_value(stripped))
+        return values
 
     @staticmethod
     def _coerce_arguments(
@@ -641,16 +729,9 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
     ) -> tuple[Any, ...]:
         if isinstance(parsed_input, (list, tuple)):
             if parameter_count == 0:
-                if len(parsed_input) == 0:
-                    return ()
                 return tuple(parsed_input)
             if parameter_count == 1:
-                if len(parsed_input) == 1:
-                    return (parsed_input[0],)
-                if all(
-                    not isinstance(item, (list, tuple, dict)) for item in parsed_input
-                ):
-                    return (parsed_input,)
+                return (parsed_input,)
             return tuple(parsed_input)
 
         if parameter_count == 0:
