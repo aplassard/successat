@@ -301,6 +301,15 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
         except SyntaxError as exc:
             return False, {"error": f"candidate code failed to compile: {exc}"}
 
+        candidate_method_name, candidate_params = self._parse_signature(candidate_code)
+        candidate_parameter_count: int | None = None
+        if (
+            example_data.method_name
+            and candidate_method_name
+            and candidate_method_name == example_data.method_name
+        ):
+            candidate_parameter_count = len(candidate_params)
+
         try:
             tests = self._load_tests(example_data)
         except ValueError as exc:
@@ -312,7 +321,12 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
         if example_data.test_mode == "stdin":
             return self._run_stdin_tests(compiled, tests)
 
-        return self._run_functional_tests(compiled, tests, example_data)
+        return self._run_functional_tests(
+            compiled,
+            tests,
+            example_data,
+            candidate_parameter_count,
+        )
 
     # Internal helpers ---------------------------------------------------
     def _clear_extra_data(self) -> None:
@@ -502,6 +516,7 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
         compiled: Any,
         tests: Sequence[Mapping[str, Any]],
         example_data: _LiveBenchExampleData,
+        candidate_parameter_count: int | None = None,
     ) -> tuple[bool, Mapping[str, Any]]:
         if example_data.method_name is None:
             return False, {"error": "functional task is missing a method signature"}
@@ -517,11 +532,22 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
             return False, {"error": "candidate code did not define a Solution class"}
 
         method_name = example_data.method_name
-        details: dict[str, Any] = {"tests_run": 0, "test_mode": "functional"}
+        details: dict[str, Any] = {
+            "tests_run": 0,
+            "test_mode": "functional",
+            "starter_parameter_count": example_data.parameter_count,
+        }
+        if candidate_parameter_count is not None:
+            details["candidate_parameter_count"] = candidate_parameter_count
 
         for index, test in enumerate(tests):
             parsed_input = self._parse_value(test.get("input", ""))
-            args = self._coerce_arguments(parsed_input, example_data.parameter_count)
+            parameter_count = (
+                candidate_parameter_count
+                if candidate_parameter_count is not None
+                else example_data.parameter_count
+            )
+            args = self._coerce_arguments(parsed_input, parameter_count)
             expected = self._parse_value(test.get("output", ""))
 
             try:
@@ -559,7 +585,8 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
             input_payload = test.get("input", "")
             expected_output = test.get("output", "")
 
-            stdin = io.StringIO(input_payload)
+            stdin_buffer = io.BytesIO(input_payload.encode("utf-8"))
+            stdin = io.TextIOWrapper(stdin_buffer, encoding="utf-8", newline="")
             stdout = io.StringIO()
             exec_globals: dict[str, Any] = {"__name__": "__main__"}
 
@@ -571,6 +598,10 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
                         exec(compiled, exec_globals)
                     finally:
                         sys.stdin = original_stdin
+                        try:
+                            stdin.detach()
+                        except Exception:
+                            pass
             except Exception as exc:
                 return False, {
                     "error": f"test {index} raised {exc.__class__.__name__}: {exc}",
@@ -605,15 +636,26 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
                 return raw
 
     @staticmethod
-    def _coerce_arguments(parsed_input: Any, parameter_count: int) -> tuple[Any, ...]:
+    def _coerce_arguments(
+        parsed_input: Any, parameter_count: int | None
+    ) -> tuple[Any, ...]:
+        if isinstance(parsed_input, (list, tuple)):
+            if parameter_count == 0:
+                if len(parsed_input) == 0:
+                    return ()
+                return tuple(parsed_input)
+            if parameter_count == 1:
+                if len(parsed_input) == 1:
+                    return (parsed_input[0],)
+                if all(
+                    not isinstance(item, (list, tuple, dict)) for item in parsed_input
+                ):
+                    return (parsed_input,)
+            return tuple(parsed_input)
+
         if parameter_count == 0:
             return ()
-        if parameter_count == 1:
-            return (parsed_input,)
-        if isinstance(parsed_input, (list, tuple)) and len(parsed_input) == parameter_count:
-            return tuple(parsed_input)
-        if isinstance(parsed_input, (list, tuple)):
-            return tuple(parsed_input)
+
         return (parsed_input,)
 
     @classmethod
