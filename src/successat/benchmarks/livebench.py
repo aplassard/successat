@@ -731,7 +731,13 @@ class LiveBenchCodingBenchmark(_BaseLiveBenchBenchmark):
             if parameter_count == 0:
                 return tuple(parsed_input)
             if parameter_count == 1:
-                return (parsed_input,)
+                if len(parsed_input) == 1:
+                    return (parsed_input[0],)
+                if all(
+                    not isinstance(item, (list, tuple, dict)) for item in parsed_input
+                ):
+                    return (parsed_input,)
+                return tuple(parsed_input)
             return tuple(parsed_input)
 
         if parameter_count == 0:
